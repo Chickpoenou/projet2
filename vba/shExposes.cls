@@ -5,6 +5,7 @@ Option Explicit
 Private Sub Worksheet_Change(ByVal Target As Range)
     Dim lo As ListObject, z As Range, c As Range
     On Error GoTo fin
+    NormaliserCodes Me, Target
     Set lo = Me.ListObjects(1)
     If lo.DataBodyRange Is Nothing Then Exit Sub
     Set z = Intersect(Target, lo.DataBodyRange)

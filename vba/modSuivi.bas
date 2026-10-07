@@ -147,7 +147,7 @@ Public Sub ToutAfficherExposes(): FiltrerStatut Tbl("tblExposes"), "": End Sub
 Public Sub GenererExposes()
     Dim code As String, lo As ListObject, v As Variant, i As Long, n As Long
     Dim existants As Object, g As Variant, r As Range
-    code = Trim$(CStr(shExposes.Range("C4").Value))
+    code = CodeDe(CStr(shExposes.Range("C4").Value))
     If code = "" Or Not MatiereExiste(code) Then
         MsgBox "Choisissez d'abord la matière dans la case « Matière » (en haut).", vbExclamation
         Exit Sub

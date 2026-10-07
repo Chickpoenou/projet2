@@ -91,7 +91,7 @@ End Sub
 
 ' ------------------------------------------------------------------ outils
 Private Sub LireCriteres(code As String, grp As String, mode As String, du As Variant, au As Variant)
-    code = Trim$(CStr(shExport.Range("C6").Value))
+    code = CodeDe(CStr(shExport.Range("C6").Value))
     grp = Trim$(CStr(shExport.Range("C7").Value))
     mode = Trim$(CStr(shExport.Range("C8").Value))
     du = shExport.Range("C9").Value

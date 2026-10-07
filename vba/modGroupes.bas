@@ -166,7 +166,7 @@ End Sub
 ' Copie les groupes par défaut dans GROUPES pour la matière choisie.
 Public Sub PreparerGroupesMatiere()
     Dim code As String, ve As Variant, loE As ListObject, i As Long, n As Long, data() As Variant
-    code = Trim$(CStr(shGroupes.Range("C5").Value))
+    code = CodeDe(CStr(shGroupes.Range("C5").Value))
     If code = "" Or Not MatiereExiste(code) Then
         MsgBox "Choisissez d'abord une matière dans la case « Matière ».", vbExclamation
         Exit Sub
@@ -201,7 +201,7 @@ End Sub
 
 Public Sub SupprimerGroupesMatiere()
     Dim code As String, lo As ListObject, i As Long, n As Long
-    code = Trim$(CStr(shGroupes.Range("C5").Value))
+    code = CodeDe(CStr(shGroupes.Range("C5").Value))
     If Not GroupesSpecifiques(code) Then
         MsgBox "Aucun groupe spécifique pour cette matière.", vbInformation
         Exit Sub

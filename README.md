@@ -10,6 +10,8 @@ Il regroupe :
 
 Configuration requise : Excel 365 ou 2021 sous Windows.
 
+> **Nouveau :** une feuille **MODE D'EMPLOI** pas à pas est incluse dans le classeur (2e onglet, et lien « ? Mode d'emploi » en haut de chaque feuille).
+
 ## Mise en route
 
 1. **Débloquer le fichier.** Faites un clic droit sur `SUIVI_GC5_2026-2027.xlsm`, puis *Propriétés*, cochez **Débloquer** et validez avec *OK*. Sans cela, Windows bloque les macros d'un fichier téléchargé.
@@ -32,6 +34,8 @@ Configuration requise : Excel 365 ou 2021 sous Windows.
 
 La case **« Afficher le groupe »** filtre l'appel sur un seul groupe.
 
+**Listes déroulantes.** Les matières se choisissent sous la forme « code – nom » (ex. « GEC2304 – Ponts »). Les enseignants et les remplaçants se choisissent dans la liste des enseignants (feuille MATIÈRES, bouton « Ajouter un enseignant »). Les autres choix ont aussi leur liste : groupes, étudiants, statuts, types de séance, présence du professeur, types de rapport.
+
 ## Les feuilles
 
 | Feuille | Rôle |
@@ -44,7 +48,7 @@ La case **« Afficher le groupe »** filtre l'appel sur un seul groupe.
 | **RAPPORTS** | Consignes de rapports (individuels ou de groupe), date et heure limite, bilan des remises. |
 | **REMISES** | Une ligne par étudiant ou groupe attendu. « Marquer remis maintenant » horodate le dépôt. Le statut se calcule seul : *À temps*, *En retard*, *Non remis* ou *En attente*. |
 | **FICHE ÉTUDIANT** | Tapez un nom ou une partie du nom (« akpa »), sans tenir compte des accents. La fiche affiche le nombre de séances et d'absences, le taux, le détail par matière avec les alertes, la liste des cours manqués et suivis, les rapports et les exposés. Elle s'exporte en PDF. |
-| **SUIVI ENSEIGNANTS** | Par matière : séances tenues, absences et retards du professeur, heures faites et restantes, avancement, dernier contenu traité. |
+| **SUIVI ENSEIGNANTS** | Par matière : séances tenues, absences et retards du professeur, heures faites et restantes, avancement, dernier contenu traité. À droite, choisissez un enseignant dans la liste pour voir ses chiffres et toutes ses séances. |
 | **RÉCAP ABSENCES** | Tableau croisé étudiants × matières. Une case passe en **rouge au-delà de 3 absences** et en orange à 3. |
 | **EXPORT PDF** | Présence par matière et par groupe (un PDF par groupe ou un seul), avec une période facultative. Exporte aussi le cahier de texte. |
 | **ÉTUDIANTS / GROUPES** | Liste et groupes par défaut. Les groupes peuvent être différents pour une matière : bouton « Préparer les groupes de cette matière ». |
@@ -87,7 +91,7 @@ pip install xlsxwriter openpyxl
 python build/build_classeur.py SUIVI_GC5_2026-2027.xlsm --etudiants ANCIEN_CLASSEUR.xlsm
 ```
 
-`--etudiants` lit la feuille « Liste » de l'ancien classeur. Sans cette option, la liste des étudiants est vide : c'est la version publiée dans ce dépôt, pour ne pas exposer de données personnelles.
+`--etudiants` lit la feuille « Liste » de l'ancien classeur. `--reprendre ANCIEN_SUIVI.xlsm` récupère les saisies d'une version précédente : séances, présences, exposés, rapports, remises, groupes, enseignants et paramètres. Sans cette option, la liste des étudiants est vide : c'est la version publiée dans ce dépôt, pour ne pas exposer de données personnelles.
 
 Contenu du dépôt :
 

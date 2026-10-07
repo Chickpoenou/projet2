@@ -92,7 +92,7 @@ Public Sub DemarrerCours()
     Deverrouiller shSaisie
     ViderPanneau
     With shSaisie
-        .Range(A_CODE).Value = code
+        .Range(A_CODE).Value = Libelle(code)
         .Range(A_DATE).Value = Date
         .Range(A_DEBUT).Value = TimeSerial(Hour(Now), Minute(Now), 0)
         .Range(A_PROF).Value = "Présent"
@@ -122,7 +122,7 @@ Public Sub EnregistrerSeance()
 End Sub
 
 Public Sub CloturerSeance()
-    If Trim$(CStr(shSaisie.Range(A_CODE).Value)) = "" Then
+    If CodeDe(CStr(shSaisie.Range(A_CODE).Value)) = "" Then
         MsgBox "Aucune séance en cours.", vbInformation
         Exit Sub
     End If
@@ -247,7 +247,7 @@ End Sub
 
 Public Sub MatiereChangee()
     Dim code As String
-    code = Trim$(CStr(shSaisie.Range(A_CODE).Value))
+    code = CodeDe(CStr(shSaisie.Range(A_CODE).Value))
     Application.EnableEvents = False
     ChargerListe code, "", True
     shSaisie.Range(A_FILTRE).Value = ""
@@ -267,7 +267,7 @@ Public Sub ChargerSeance(ByVal id As String)
     DebutTraitement
     Deverrouiller shSaisie
     With shSaisie
-        .Range(A_CODE).Value = r.Cells(1, Col(lo, "Code matière")).Value
+        .Range(A_CODE).Value = Libelle(CStr(r.Cells(1, Col(lo, "Code matière")).Value))
         .Range(A_DATE).Value = r.Cells(1, Col(lo, "Date")).Value
         .Range(A_DEBUT).Value = r.Cells(1, Col(lo, "Début")).Value
         .Range(A_FIN).Value = r.Cells(1, Col(lo, "Fin")).Value
@@ -292,7 +292,7 @@ Private Function Enregistrer(ByVal avecAppel As Boolean) As Boolean
     Dim faireAppel As Boolean, ligne As Long, n As Long, data() As Variant
     Dim intitule As String, statut As String
 
-    code = Trim$(CStr(shSaisie.Range(A_CODE).Value))
+    code = CodeDe(CStr(shSaisie.Range(A_CODE).Value))
     If code = "" Or Not MatiereExiste(code) Then
         MsgBox "Choisissez d'abord une matière valide dans la case « Matière ».", vbExclamation
         Exit Function

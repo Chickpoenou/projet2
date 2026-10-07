@@ -67,6 +67,9 @@ COULEUR = {m[0]: m[8] for m in MATIERES}
 ABREGE = {m[0]: m[3] for m in MATIERES}
 ENSEIGNANT = {m[0]: m[4] for m in MATIERES}
 
+ENSEIGNANTS = ["ALE", "ASSOGBA Gauthier", "DOKO V.", "GIBIGAYE", "GODONOU", "HOUANOU K. A.", "MILOHIN",
+               "Prof X", "SEKLOKA", "SOHOUNHLOUE"]
+
 JOURS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"]
 EDT = [
     # jour, début, fin, code, salle
@@ -112,6 +115,48 @@ SIGNIF = {"P": "Présent", "A": "Absent", "R": "Retard", "E": "Excusé"}
 NB_LIGNES_TABLE = 3000      # portée des validations / mises en forme sous les tableaux
 
 
+def _args(txt, debut):
+    """Découpe les arguments d'un appel de fonction à partir de la parenthèse ouvrante."""
+    prof, crochet, args, cur, i = 0, 0, [], "", debut + 1
+    while i < len(txt):
+        ch = txt[i]
+        if ch == '"':
+            j = txt.index('"', i + 1)
+            cur += txt[i:j + 1]
+            i = j + 1
+            continue
+        if ch == "[":
+            crochet += 1
+        elif ch == "]":
+            crochet -= 1
+        elif ch == "(":
+            prof += 1
+        elif ch == ")":
+            if prof == 0 and crochet == 0:
+                args.append(cur)
+                return args, i
+            prof -= 1
+        elif ch == "," and prof == 0 and crochet == 0:
+            args.append(cur)
+            cur = ""
+            i += 1
+            continue
+        cur += ch
+        i += 1
+    raise ValueError(txt)
+
+
+def sans_xlookup(f):
+    """XLOOKUP(v, clés, retour[, défaut]) -> IFERROR(INDEX(retour,MATCH(v,clés,0)),défaut)."""
+    while "XLOOKUP(" in f:
+        d = f.index("XLOOKUP(")
+        args, fin = _args(f, d + 7)
+        v, cles, ret = args[0], args[1], args[2]
+        defaut = args[3] if len(args) > 3 else '""'
+        f = f[:d] + f"IFERROR(INDEX({ret},MATCH({v},{cles},0)),{defaut})" + f[fin + 1:]
+    return f
+
+
 def heure(h, m=0):
     return dt.time(h, m)
 
@@ -128,6 +173,45 @@ def lire_etudiants(chemin):
             contact = r[5]
             out.append([r[1], nom, r[3], role, r[4] or "", contact if contact else ""])
     return out
+
+
+TABLES_REPRISES = ["tblSeances", "tblPresences", "tblExposes", "tblRapports", "tblRemises", "tblGroupes",
+                   "tblEtudiants", "tblListeGroupes", "tblEnseignants"]
+
+
+def lire_reprise(chemin):
+    """Lit les saisies d'un ancien classeur : {table: [ {en-tête: valeur} ]}, {paramètre: valeur}."""
+    import openpyxl
+    wb = openpyxl.load_workbook(chemin)
+    tables, params = {}, {}
+    for ws in wb.worksheets:
+        for t in ws.tables.values():
+            if t.name not in TABLES_REPRISES:
+                continue
+            lignes = list(ws[t.ref])
+            entetes = [c.value for c in lignes[0]]
+            out = []
+            for ligne in lignes[1:]:
+                d = {}
+                for h, c in zip(entetes, ligne):
+                    v = c.value
+                    if v is None or not isinstance(v, (str, int, float, dt.date, dt.time, dt.datetime)):
+                        continue
+                    if isinstance(v, str) and v.startswith("="):
+                        continue
+                    d[h] = v
+                if d:
+                    out.append(d)
+            if out:
+                tables[t.name] = out
+    for nom in wb.defined_names:
+        if nom.startswith("p"):
+            try:
+                dest = list(wb.defined_names[nom].destinations)[0]
+                params[nom] = wb[dest[0]][dest[1].replace("$", "")].value
+            except Exception:
+                pass
+    return tables, params
 
 
 # ======================================================================
@@ -177,6 +261,8 @@ class Classeur:
         ws.set_row(2, 26)
         ws.write_url(0, 1, "internal:'ACCUEIL'!A1", self.f(font_size=7, font_color=BLEU, underline=1),
                      string="⌂ Accueil")
+        ws.write_url(0, 2, "internal:'MODE D''EMPLOI'!A1", self.f(font_size=7, font_color=BLEU, underline=1),
+                     string="?  Mode d'emploi")
         if self.apercu:
             ws.set_landscape()
             ws.fit_to_pages(1, 1)
@@ -196,7 +282,7 @@ class Classeur:
             "object_position": 3,
         }
         if cible:
-            opts["url"] = f"internal:'{cible}'!A1"
+            opts["url"] = "internal:'" + cible.replace("'", "''") + "'!A1"
             opts["tip"] = f"Aller à {cible}"
         if macro:
             opts["description"] = f"macro:{macro}"
@@ -224,6 +310,10 @@ class Classeur:
             if "formula" in c:
                 fml = re.sub(r"\[@([^\[\]]+)\]", r"[@[\1]]", c["formula"])
                 c["formula"] = re.sub(r"(?<![\w\]])\[@", nom + "[@", fml)
+                c["formula"] = sans_xlookup(c["formula"])
+        reprise = getattr(self, "reprise", {}).get(nom)
+        if reprise:
+            donnees = [[None if "formula" in c else ligne.get(c["header"]) for c in colonnes] for ligne in reprise]
         n = max(len(donnees or []), 1)
         derniere = ligne + n + (1 if total else 0)
         opts = {"name": nom, "style": style, "columns": colonnes, "autofilter": True}
@@ -240,8 +330,10 @@ class Classeur:
             ws.conditional_format(plage, {"type": "cell", "criteria": "==", "value": f'"{s}"',
                                           "format": self.f(bg_color=fond, font_color=txt, bold=True)})
 
-    def dv_liste(self, ws, plage, source, message=None):
+    def dv_liste(self, ws, plage, source, message=None, libre=False):
         opts = {"validate": "list", "source": source, "ignore_blank": True}
+        if libre:  # liste proposée, saisie libre acceptée
+            opts["error_type"] = "information"
         if message:
             opts.update({"input_title": message[0], "input_message": message[1]})
         ws.data_validation(plage, opts)
@@ -254,6 +346,7 @@ class Classeur:
     # ===================================================================
     def construire(self):
         self.accueil()
+        self.guide()
         self.cours_du_jour()
         self.cahier()
         self.presences()
@@ -409,6 +502,7 @@ class Classeur:
             ("💾  Sauvegarder (copie datée)", None, "Sauvegarder", MARINE),
             ("🔒  Mode administrateur", None, "ModeAdministrateur", MARINE),
             ("↻  Actualiser", None, "Actualiser", MARINE),
+            ("❓  MODE D'EMPLOI", "MODE D'EMPLOI", None, OR),
         ]
         for i, (txt, cible, macro, coul) in enumerate(tuiles):
             ligne, colonne = 28 + (i // 4) * 3, 1 + (i % 4) * 2
@@ -467,7 +561,7 @@ class Classeur:
         ws.conditional_format("D6", {"type": "formula", "criteria": '=$C$6<>""',
                                      "format": self.f(font_color="#006100", bold=True)})
         ws.merge_range("D7:F7", "", info)
-        ws.write_formula("D7", '=IFERROR(XLOOKUP(C7,tblMatieres[Code],tblMatieres[Intitulé]),"")',
+        ws.write_formula("D7", '=IFERROR(XLOOKUP(LEFT(C7,FIND(" ",C7&" ")-1),tblMatieres[Code],tblMatieres[Intitulé]),"")',
                          self.f(bold=True, font_color=BLEU, indent=1))
         ws.merge_range("D8:F8", "", info)
         ws.write_formula("D8", '=IF(C8="","",CHOOSE(WEEKDAY(C8,2),"Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"))', info)
@@ -475,17 +569,19 @@ class Classeur:
         ws.merge_range("D10:F10", "", info)
         ws.write_formula("D10", '=IF(OR(C9="",C10=""),"","Durée : "&TEXT(MOD(C10-C9,1),"[h]:mm"))', info)
         ws.merge_range("C11:F11", "", self.f(bold=True, indent=1, bg_color=PALE, border=1, border_color=BORDURE))
-        ws.write_formula("C11", '=IFERROR(XLOOKUP(C7,tblMatieres[Code],tblMatieres[Enseignant(s)]),"")',
+        ws.write_formula("C11", '=IFERROR(XLOOKUP(LEFT(C7,FIND(" ",C7&" ")-1),tblMatieres[Code],tblMatieres[Enseignant(s)]),"")',
                          self.f(bold=True, indent=1, bg_color=PALE, border=1, border_color=BORDURE))
         ws.merge_range("D12:F12", "", info)
         ws.merge_range("D14:F14", "", info)
         self.dv_liste(ws, "C6", "=LstSeances", ("Recharger une séance", "Choisissez un n° pour la modifier."))
-        self.dv_liste(ws, "C7", "=LstCodes", ("Matière", "Code de la matière (rempli par DÉMARRER LE COURS)."))
+        self.dv_liste(ws, "C7", "=LstMatieres", ("Matière", "Choisissez la matière (remplie par DÉMARRER LE COURS)."))
         ws.data_validation("C8", {"validate": "date", "criteria": ">", "value": dt.date(2020, 1, 1)})
         ws.data_validation("C9:C10", {"validate": "time", "criteria": "between", "minimum": dt.time(0, 0),
                                       "maximum": dt.time(23, 59), "error_message": "Saisissez une heure hh:mm."})
         self.dv_liste(ws, "C12", "=LstProf")
         self.dv_liste(ws, "C14", "=LstTypes")
+        self.dv_liste(ws, "C13", "=LstEnseignants", ("Remplaçant", "Choisissez l'enseignant remplaçant ou écrivez un motif."),
+                      libre=True)
         ws.conditional_format("C12", {"type": "cell", "criteria": "==", "value": '"Absent"',
                                       "format": self.f(bg_color=STATUTS["A"][0], font_color=STATUTS["A"][1])})
         ws.conditional_format("C12", {"type": "cell", "criteria": "==", "value": '"Présent"',
@@ -601,7 +697,8 @@ class Classeur:
         n = NB_LIGNES_TABLE
         self.dv_liste(ws, f"K7:K{n}", "=LstProf")
         self.dv_liste(ws, f"M7:M{n}", "=LstTypes")
-        self.dv_liste(ws, f"H7:H{n}", "=LstCodes")
+        self.dv_liste(ws, f"L7:L{n}", "=LstEnseignants", libre=True)
+        self.dv_liste(ws, f"H7:H{n}", "=LstMatieres")
         for v, s in (("Absent", "A"), ("Retard", "R"), ("Présent", "P"), ("Remplacé", "E")):
             ws.conditional_format(f"K7:K{n}", {"type": "cell", "criteria": "==", "value": f'"{v}"',
                                                "format": self.f(bg_color=STATUTS[s][0], font_color=STATUTS[s][1])})
@@ -641,7 +738,7 @@ class Classeur:
         lab = self.f(bold=True, font_color=MARINE, bg_color=PALE, indent=1, border=1, border_color=BORDURE)
         ws.write("B4", "Matière", lab)
         ws.write_blank("C4", None, self.saisie(bold=True, indent=1))
-        self.dv_liste(ws, "C4", "=LstCodes")
+        self.dv_liste(ws, "C4", "=LstMatieres")
         ws.set_row(3, 30)
         self.rangee(ws, 3, [
             ("⇩  Une ligne par groupe", dict(macro="GenererExposes", couleur=ORANGE, larg=170)),
@@ -712,7 +809,7 @@ class Classeur:
             colonnes.append(c)
         self.table(ws, 24, 1, "tblExposes", colonnes, style="Table Style Medium 3")
         n = NB_LIGNES_TABLE
-        self.dv_liste(ws, f"B26:B{n}", "=LstCodes")
+        self.dv_liste(ws, f"B26:B{n}", "=LstMatieres")
         self.dv_liste(ws, f"D26:D{n}", "=LstGroupes")
         self.dv_liste(ws, f"H26:H{n}", "=LstStatutExpose")
         for v, s in (("Présenté", "P"), ("Reporté", "R"), ("Annulé", "E"), ("À venir", None)):
@@ -760,7 +857,7 @@ class Classeur:
             colonnes.append(c)
         self.table(ws, 5, 1, "tblRapports", colonnes, style="Table Style Medium 4")
         n = NB_LIGNES_TABLE
-        self.dv_liste(ws, f"C7:C{n}", "=LstCodes")
+        self.dv_liste(ws, f"C7:C{n}", "=LstMatieres")
         self.dv_liste(ws, f"F7:F{n}", "=LstTypeRapport")
         ws.conditional_format(f"N7:N{n}", {"type": "cell", "criteria": ">", "value": 0,
                                            "format": self.f(bg_color=STATUTS["A"][0], font_color=STATUTS["A"][1],
@@ -809,6 +906,8 @@ class Classeur:
         self.table(ws, 5, 1, "tblRemises", colonnes, style="Table Style Medium 4")
         n = NB_LIGNES_TABLE
         self.dv_liste(ws, f"B7:B{n}", "=LstRapports")
+        self.dv_liste(ws, f"F7:F{n}", "=LstEtudiants", ("Remis par", "Étudiant (rapport individuel) ou nom du groupe."),
+                      libre=True)
         for v, s in (("À temps", "P"), ("Remis", "P"), ("En retard", "R"), ("Non remis", "A"), ("En attente", "E")):
             ws.conditional_format(f"J7:J{n}", {"type": "cell", "criteria": "==", "value": f'"{v}"',
                                                "format": self.f(bg_color=STATUTS[s][0], font_color=STATUTS[s][1],
@@ -1009,10 +1108,158 @@ class Classeur:
             ws.write_blank(r, 1, None, self.f(num_format="dd/mm/yyyy", align="center"))
             ws.write_blank(r, 3, None, self.f(num_format="hh:mm", align="center"))
             ws.write_blank(r, 4, None, self.f(num_format="hh:mm", align="center"))
+        self.par_enseignant(ws)
         ws.write_dynamic_array_formula(
             "B26:B26",
             '=FILTER(tblSeances[[Date]:[Remplaçant ou motif]],(tblSeances[Présence prof]<>"Présent")*(tblSeances[Présence prof]<>""),"Aucune absence ni retard d\'enseignant enregistré")')
         ws.freeze_panes(6, 2)
+
+    def par_enseignant(self, ws):
+        lab = self.f(bold=True, font_color=MARINE, bg_color=PALE, indent=1, border=1, border_color=BORDURE)
+        for col, w in zip(range(14, 27), [3, 12, 10, 8, 8, 8, 12, 24, 20, 11, 18, 10, 45]):
+            ws.set_column(col, col, w)
+        self.section(ws, 4, 15, 26, "SUIVI PAR ENSEIGNANT", OR)
+        ws.write("P6", "Enseignant", lab)
+        ws.merge_range("Q6:S6", "", self.saisie(bold=True, indent=1))
+        self.dv_liste(ws, "Q6", "=LstEnseignants", ("Enseignant", "Choisissez un enseignant dans la liste."))
+        ws.merge_range("T6:W6", "← choisissez un enseignant dans la liste", self.f(italic=True, font_color=GRIS_TXT,
+                                                                                indent=1))
+        e = '"*"&$Q$6&"*"'
+        ok = f'tblSeances[Enseignant prévu],{e}'
+        cartes = [
+            ("P", "Q", "MATIÈRES", f'=IF($Q$6="","",COUNTIF(tblMatieres[Enseignant(s)],{e}))', BLEU, "0"),
+            ("R", "S", "SÉANCES TENUES", f'=IF($Q$6="","",COUNTIFS({ok},tblSeances[Présence prof],"<>Absent"))', VERT, "0"),
+            ("T", "T", "ABSENCES", f'=IF($Q$6="","",COUNTIFS({ok},tblSeances[Présence prof],"Absent"))', ROUGE, "0"),
+            ("U", "U", "RETARDS", f'=IF($Q$6="","",COUNTIFS({ok},tblSeances[Présence prof],"Retard"))', "#C55A11", "0"),
+            ("V", "V", "HEURES FAITES", f'=IF($Q$6="","",SUMIFS(tblSeances[Durée (h)],{ok},tblSeances[Présence prof],"<>Absent"))', MARINE, '0.0" h"'),
+            ("W", "X", "AVANCEMENT", f'=IF($Q$6="","",IFERROR(V9/SUMIFS(tblMatieres[Volume total (h)],tblMatieres[Enseignant(s)],{e}),0))', OR, "0%"),
+        ]
+        ws.set_row(8, 30)
+        for c1, c2, lib, fml, coul, nf in cartes:
+            t = self.f(bold=True, font_size=8, font_color=BLANC, bg_color=coul, align="center")
+            v = self.f(bold=True, font_size=16, font_color=coul, bg_color=PALE, align="center", num_format=nf)
+            if c1 == c2:
+                ws.write(f"{c1}8", lib, t)
+                ws.write_formula(f"{c1}9", fml, v)
+            else:
+                ws.merge_range(f"{c1}8:{c2}8", lib, t)
+                ws.merge_range(f"{c1}9:{c2}9", "", v)
+                ws.write_formula(f"{c1}9", fml, v)
+        ws.write_formula("Y9", f'=IF($Q$6="","","sur "&SUMIFS(tblMatieres[Volume total (h)],tblMatieres[Enseignant(s)],{e})&" h prévues")',
+                         self.f(font_color=GRIS_TXT, italic=True, indent=1))
+        th = self.f(bold=True, font_color=MARINE, bg_color=BLEU_CLAIR, align="center", bottom=1, text_wrap=True)
+        for i, t in enumerate(["Date", "Jour", "Début", "Fin", "Durée", "Code", "Matière", "Enseignant prévu",
+                               "Présence", "Remplaçant", "Type", "Contenu traité"]):
+            ws.write(10, 15 + i, t, th)
+        for r in range(11, 311):
+            ws.write_blank(r, 15, None, self.f(num_format="dd/mm/yyyy", align="center", font_size=9))
+            ws.write_blank(r, 17, None, self.f(num_format="hh:mm", align="center", font_size=9))
+            ws.write_blank(r, 18, None, self.f(num_format="hh:mm", align="center", font_size=9))
+        ws.write_dynamic_array_formula(
+            "P12:P12",
+            '=IF($Q$6="","",SORT(FILTER(tblSeances[[Date]:[Contenu / chapitres traités]],'
+            'ISNUMBER(SEARCH($Q$6,tblSeances[Enseignant prévu]))+(tblSeances[Remplaçant ou motif]=$Q$6),'
+            '"Aucune séance enregistrée pour cet enseignant"),1,-1))')
+        for v, st in (("Absent", "A"), ("Retard", "R"), ("Présent", "P"), ("Remplacé", "E")):
+            ws.conditional_format("X12:X311", {"type": "cell", "criteria": "==", "value": f'"{v}"',
+                                               "format": self.f(bg_color=STATUTS[st][0], font_color=STATUTS[st][1])})
+
+    # --------------------------------------------------- MODE D'EMPLOI
+    def guide(self):
+        ws = self.feuille("MODE D'EMPLOI", "shGuide", OR, "MODE D'EMPLOI  —  COMMENT UTILISER LE CLASSEUR",
+                          "Lisez une fois ce guide. Les cases jaune clair sont celles que vous remplissez ; tout le reste "
+                          "se calcule seul. Cliquez sur les boutons de couleur pour aller aux feuilles.", [5, 120, 3, 22], 4)
+        blocs = [
+            ("A", "AVANT DE COMMENCER (une seule fois)", MARINE, None, [
+                "Débloquez le fichier : clic droit sur le fichier › Propriétés › cochez « Débloquer » › OK. Ouvrez-le "
+                "puis cliquez sur « Activer le contenu » dans le bandeau jaune. Sans cela les boutons ne marchent pas.",
+                "Feuille PARAMÈTRES : écrivez votre nom dans « Délégué de classe » (il apparaît sur les PDF).",
+                "Feuille ÉTUDIANTS : vérifiez la liste des étudiants (nom, groupe, email, contact). Le bouton "
+                "« Ajouter un étudiant » ajoute une ligne.",
+                "Les feuilles sont protégées pour éviter les erreurs (mot de passe : GC5BTP, bouton « Mode "
+                "administrateur » sur l'accueil). Les listes déroulantes apparaissent quand vous cliquez sur une case "
+                "jaune : petite flèche à droite de la case.",
+            ]),
+            ("B", "À CHAQUE COURS  (feuille COURS DU JOUR)", ORANGE, "COURS DU JOUR", [
+                "Sur l'ACCUEIL, cliquez sur le bouton orange « ▶ DÉMARRER LE COURS ». Le classeur regarde le jour, "
+                "l'heure et l'emploi du temps : la matière, la date et l'heure de début se remplissent seules. "
+                "S'il n'y a pas de cours prévu à cette heure, choisissez la matière dans la liste.",
+                "« Présence du professeur » : choisissez Présent, Absent, Retard ou Remplacé dans la liste. "
+                "En cas de remplacement, choisissez le remplaçant dans la liste « Remplaçant / motif ».",
+                "Écrivez le contenu du cours (chapitres traités) et les travaux demandés dans les grandes cases jaunes.",
+                "L'appel : cliquez sur « ✓ TOUS PRÉSENTS », puis double-cliquez sur la case « Statut » d'un étudiant "
+                "pour la changer : P → A (absent) → R (retard, l'heure d'arrivée est notée) → E (excusé). "
+                "La case « Afficher le groupe » permet de ne voir qu'un groupe.",
+                "Cliquez sur « ✔ ENREGISTRER ». La séance va dans le CAHIER DE TEXTE et l'appel dans PRÉSENCES. "
+                "Vous pouvez enregistrer plusieurs fois.",
+                "En fin de cours, cliquez sur « ■ CLÔTURER » : l'heure de fin est notée et la durée calculée.",
+                "Pour corriger une séance passée : choisissez son numéro dans « N° séance (recharger) », modifiez, "
+                "puis ENREGISTRER.",
+            ]),
+            ("C", "EXPOSÉS", "#C55A11", "EXPOSÉS", [
+                "Feuille EXPOSÉS : choisissez la matière dans la case jaune « Matière ».",
+                "Cliquez sur « Une ligne par groupe » : une ligne est créée pour chaque groupe. Complétez le thème "
+                "et la date prévue.",
+                "Le jour du passage, cliquez sur la ligne du groupe puis sur « ✔ Marquer présenté ». Le tableau du "
+                "haut indique pour chaque matière les groupes passés et ceux qui restent.",
+            ]),
+            ("D", "RAPPORTS", "#C55A11", "RAPPORTS", [
+                "Feuille RAPPORTS : « ＋ Nouveau rapport », puis choisissez la matière, écrivez l'intitulé, choisissez "
+                "le type (Individuel ou Groupe) et la date / heure limite.",
+                "Cliquez sur la ligne du rapport puis sur « ⇩ Générer les remises attendues » : une ligne par "
+                "étudiant (ou par groupe) est créée dans REMISES.",
+                "Feuille REMISES : quand quelqu'un dépose son rapport, cliquez sur sa ligne puis sur « ✔ Marquer remis "
+                "maintenant » (date et heure notées). Le statut À temps / En retard / Non remis se calcule seul. "
+                "Les boutons « Non remis » et « En retard » filtrent la liste.",
+            ]),
+            ("E", "CONSULTER", VERT, "FICHE ÉTUDIANT", [
+                "FICHE ÉTUDIANT : tapez une partie du nom dans « Rechercher » puis Entrée (ou choisissez dans la liste "
+                "« Étudiant »). Vous voyez ses présences, absences par matière, cours manqués, rapports et exposés. "
+                "Bouton « Fiche en PDF » pour l'imprimer.",
+                "RÉCAP ABSENCES : toute la promotion d'un coup d'œil. Rouge = plus de 3 absences dans une matière.",
+                "SUIVI ENSEIGNANTS : avancement de chaque matière ; à droite, choisissez un enseignant dans la liste "
+                "pour voir toutes ses séances, absences et retards.",
+            ]),
+            ("F", "IMPRIMER / EXPORTER EN PDF", VERT, "EXPORT PDF", [
+                "Feuille EXPORT PDF : choisissez la matière (vide = toutes), le groupe (vide = tous) et "
+                "éventuellement une période, puis « Exporter la PRÉSENCE » ou « Exporter le CAHIER DE TEXTE ».",
+                "Les PDF sont rangés dans le dossier « Export_PDF » à côté du classeur (un sous-dossier par matière).",
+            ]),
+            ("G", "BON À SAVOIR", "#7F7F7F", None, [
+                "Enregistrez souvent (Ctrl+S). Le bouton « Sauvegarder » de l'accueil crée en plus une copie datée "
+                "dans le dossier « Sauvegardes ».",
+                "Appuyez sur F9 pour actualiser l'heure et le cours du moment sur l'accueil.",
+                "Ne renommez pas les feuilles et ne supprimez pas les tableaux : les macros s'en servent.",
+                "Pour modifier une matière, un enseignant ou l'emploi du temps : « Mode administrateur » sur l'accueil.",
+            ]),
+        ]
+        r = 4
+        for lettre, titre, coul, cible, etapes in blocs:
+            ws.set_row(r, 24)
+            ws.write(r, 1, lettre, self.f(bold=True, font_size=13, font_color=BLANC, bg_color=coul, align="center"))
+            ws.write(r, 2, "  " + titre, self.f(bold=True, font_size=12, font_color=BLANC, bg_color=coul))
+            if cible:
+                ws.write_url(r, 4, f"internal:'{cible}'!A1", self.f(bold=True, font_color=BLANC, bg_color=coul,
+                                                                    align="center", underline=1),
+                             string=f"Ouvrir {cible.lower()} ›")
+            else:
+                ws.write_blank(r, 4, None, self.f(bg_color=coul))
+            ws.write_blank(r, 3, None, self.f(bg_color=coul))
+            r += 1
+            for i, t in enumerate(etapes, 1):
+                lignes = max(1, -(-len(t) // 125))
+                ws.set_row(r, 17 * lignes + 6)
+                ws.write(r, 1, i, self.f(bold=True, font_color=coul, align="center", valign="top", font_size=12))
+                ws.merge_range(r, 2, r, 4, t, self.f(text_wrap=True, valign="top", bottom=4,
+                                                     bottom_color="#E7E6E6"))
+                r += 1
+            r += 1
+        legende = r
+        ws.write(legende, 2, "Légende des statuts de présence :", self.f(bold=True, font_color=MARINE))
+        for i, (st, (fond, txt)) in enumerate(STATUTS.items()):
+            ws.write(legende + 1 + i, 1, st, self.f(bold=True, align="center", bg_color=fond, font_color=txt))
+            ws.write(legende + 1 + i, 2, SIGNIF[st], self.f(indent=1))
+        ws.set_selection("A1")
 
     # --------------------------------------------------- RÉCAP ABSENCES
     def recap(self):
@@ -1080,7 +1327,7 @@ class Classeur:
         info = self.f(font_color=GRIS_TXT, italic=True, indent=1, text_wrap=True)
         self.section(ws, 4, 1, 6, "OPTIONS")
         lignes = [
-            (5, "Matière", "=LstCodes", "Vide = toutes les matières (un fichier par matière)."),
+            (5, "Matière", "=LstMatieres", "Vide = toutes les matières (un fichier par matière)."),
             (6, "Groupe", "=LstGroupes", "Vide = tous les groupes de la matière."),
             (7, "Mode (si groupe vide)", "=LstModeExport", "Un PDF par groupe, ou une seule liste avec tous les groupes."),
             (8, "Du (facultatif)", None, "Date de début de la période à exporter."),
@@ -1164,9 +1411,9 @@ class Classeur:
         lab = self.f(bold=True, font_color=MARINE, bg_color=PALE, indent=1, border=1, border_color=BORDURE)
         ws.write("B5", "Matière", lab)
         ws.write_blank("C5", None, self.saisie(bold=True, indent=1))
-        self.dv_liste(ws, "C5", "=LstCodes")
+        self.dv_liste(ws, "C5", "=LstMatieres")
         ws.merge_range("B6:E6", "", self.f(bold=True, font_color=OR, indent=1))
-        ws.write_formula("B6", '=IF(C5="","Choisissez une matière.",IF(COUNTIF(tblGroupes[Code matière],C5)>0,"► Groupes SPÉCIFIQUES à "&C5&" (tableau ci-dessous)","► "&C5&" utilise les groupes PAR DÉFAUT (feuille ÉTUDIANTS)"))',
+        ws.write_formula("B6", '=IF(C5="","Choisissez une matière.",IF(COUNTIF(tblGroupes[Code matière],LEFT(C5,FIND(" ",C5&" ")-1))>0,"► Groupes SPÉCIFIQUES à "&C5&" (tableau ci-dessous)","► "&C5&" utilise les groupes PAR DÉFAUT (feuille ÉTUDIANTS)"))',
                          self.f(bold=True, font_color=OR, indent=1))
         ws.set_row(4, 30)
         self.rangee(ws, 4, [
@@ -1181,12 +1428,13 @@ class Classeur:
                     {"header": "Groupe", "format": self.f(locked=False, align="center", bold=True)},
                     {"header": "Rôle", "format": self.f(locked=False, align="center")}]
         self.table(ws, 8, 1, "tblGroupes", colonnes, style="Table Style Medium 7")
-        self.dv_liste(ws, f"B10:B{NB_LIGNES_TABLE}", "=LstCodes")
+        self.dv_liste(ws, f"B10:B{NB_LIGNES_TABLE}", "=LstMatieres")
         self.dv_liste(ws, f"C10:C{NB_LIGNES_TABLE}", "=LstEtudiants")
         self.dv_liste(ws, f"D10:D{NB_LIGNES_TABLE}", "=LstGroupes")
         # Composition
         self.section(ws, 7, 6, 15, "COMPOSITION DES GROUPES POUR LA MATIÈRE CHOISIE", VERT)
-        groupes = ('IF(COUNTIF(tblGroupes[Code matière],$C$5)>0,UNIQUE(FILTER(tblGroupes[Groupe],tblGroupes[Code matière]=$C$5)),'
+        cg = 'LEFT($C$5,FIND(" ",$C$5&" ")-1)'
+        groupes = (f'IF(COUNTIF(tblGroupes[Code matière],{cg})>0,UNIQUE(FILTER(tblGroupes[Groupe],tblGroupes[Code matière]={cg})),'
                    'UNIQUE(FILTER(tblEtudiants[Groupe],tblEtudiants[Groupe]<>"")))')
         th = self.f(bold=True, font_color=BLANC, bg_color=VERT, align="center")
         for k in range(10):
@@ -1194,14 +1442,14 @@ class Classeur:
             cn = xl_col_to_name(col)
             ws.write_dynamic_array_formula(8, col, 8, col, self.let(
                 f'=IFERROR(LET(§g,{groupes},§s,SORTBY(§g,LEN(§g),1,§g,1),INDEX(§s,{k + 1})),"")'), th)
-            ws.write_dynamic_array_formula(9, col, 9, col, f'=IF({cn}$9="","",IF(COUNTIF(tblGroupes[Code matière],$C$5)>0,FILTER(tblGroupes[Étudiant],(tblGroupes[Code matière]=$C$5)*(tblGroupes[Groupe]={cn}$9),""),FILTER(tblEtudiants[Nom et prénoms],tblEtudiants[Groupe]={cn}$9,"")))',
+            ws.write_dynamic_array_formula(9, col, 9, col, f'=IF({cn}$9="","",IF(COUNTIF(tblGroupes[Code matière],{cg})>0,FILTER(tblGroupes[Étudiant],(tblGroupes[Code matière]={cg})*(tblGroupes[Groupe]={cn}$9),""),FILTER(tblEtudiants[Nom et prénoms],tblEtudiants[Groupe]={cn}$9,"")))',
                                            self.f(font_size=9, indent=1))
             for r in range(10, 40):
                 ws.write_blank(r, col, None, self.f(font_size=9, indent=1, bottom=4, bottom_color="#E7E6E6"))
 
     # --------------------------------------------------------- MATIÈRES
     def matieres(self):
-        larg = [12, 10, 46, 15, 24, 9, 9, 9, 11, 10]
+        larg = [12, 10, 46, 15, 24, 9, 9, 9, 11, 10, 24, 3, 24, 16, 28]
         ws = self.feuille("MATIÈRES", "shMatieres", "#7F7F7F", "MATIÈRES ET ENSEIGNANTS  —  SEMESTRE 9",
                           "D'après l'emploi du temps officiel. Le volume prévu sert au calcul de l'avancement. "
                           "Modifications : mode administrateur (mot de passe).", larg, 10)
@@ -1221,12 +1469,24 @@ class Classeur:
              "formula": "=[@[Cours (h)]]+[@[TD (h)]]+[@[TP (h)]]",
              "total_function": "=SUBTOTAL(109,tblMatieres[Volume total (h)])"},
             {"header": "Couleur", "format": self.f(align="center", font_size=8)},
+            {"header": "Libellé", "format": self.f(font_size=9, font_color=GRIS_TXT),
+             "formula": '=[@Code]&" – "&[@Abrégé]'},
         ]
-        donnees = [[m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], None, m[8]] for m in MATIERES]
+        donnees = [[m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], None, m[8], None] for m in MATIERES]
         self.table(ws, 5, 1, "tblMatieres", colonnes, donnees, style="Table Style Medium 2", total=True)
         for i, m in enumerate(MATIERES):
             ws.write(6 + i, 10, m[8], self.f(align="center", font_size=8, bg_color=m[8], font_color=GRIS_TXT))
             ws.set_row(6 + i, 30)
+        self.dv_liste(ws, "F7:F60", "=LstEnseignants", libre=True)
+        # Enseignants
+        self.section(ws, 3, 13, 15, "ENSEIGNANTS (liste déroulante du classeur)", VERT)
+        self.table(ws, 5, 13, "tblEnseignants", [
+            {"header": "Enseignant", "format": self.f(locked=False, bold=True)},
+            {"header": "Téléphone", "format": self.f(locked=False, align="center")},
+            {"header": "Email", "format": self.f(locked=False, font_color=BLEU)}],
+            [[e, None, None] for e in ENSEIGNANTS], style="Table Style Medium 7")
+        self.bouton(ws, 4, 13, "＋ Ajouter un enseignant", macro="AjouterEnseignant", couleur=VERT, larg=170,
+                    haut=20, dy=1)
 
     # ----------------------------------------------------- EMPLOI DU TEMPS
     def edt(self):
@@ -1254,7 +1514,7 @@ class Classeur:
         donnees = [[j, None, heure(d), heure(f), code, None, None, salle, None, None] for j, d, f, code, salle in EDT]
         self.table(ws, 5, 1, "tblEDT", colonnes, donnees, style="Table Style Medium 2")
         self.dv_liste(ws, f"B7:B200", "=LstJours")
-        self.dv_liste(ws, f"F7:F200", "=LstCodes")
+        self.dv_liste(ws, f"F7:F200", "=LstMatieres")
         # Grille
         g0 = 12
         th = self.f(bold=True, font_color=BLANC, bg_color=MARINE, align="center", border=1, border_color=BLANC)
@@ -1297,6 +1557,9 @@ class Classeur:
         for i, (nom, lib, val) in enumerate(PARAMS):
             r = 5 + i
             ws.write(r, 1, lib, lab)
+            val = getattr(self, "params_reprise", {}).get(nom, val)
+            if val is None:
+                val = ""
             nf = "dd/mm/yyyy" if isinstance(val, dt.date) else None
             fmt = self.saisie(bold=True, indent=1, num_format=nf) if nf else self.saisie(bold=True, indent=1)
             if isinstance(val, dt.date):
@@ -1360,6 +1623,8 @@ class Classeur:
         for nom, ref in self.plages_listes.items():
             self.wb.define_name(nom, ref)
         self.wb.define_name("LstCodes", "=tblMatieres[Code]")
+        self.wb.define_name("LstMatieres", "=tblMatieres[Libellé]")
+        self.wb.define_name("LstEnseignants", "=tblEnseignants[Enseignant]")
         self.wb.define_name("LstEtudiants", "=tblEtudiants[Nom et prénoms]")
         self.wb.define_name("LstGroupes", "=tblListeGroupes[Groupe]")
         self.wb.define_name("LstSeances", "=tblSeances[ID]")
@@ -1423,9 +1688,13 @@ def main():
     ap.add_argument("--etudiants")
     ap.add_argument("--demo", action="store_true")
     ap.add_argument("--apercu", action="store_true", help="une page par feuille (contrôle visuel)")
+    ap.add_argument("--reprendre", help="ancien classeur SUIVI_GC5 dont on reprend les saisies")
     a = ap.parse_args()
     etu = lire_etudiants(a.etudiants) if a.etudiants else []
     c = Classeur(a.sortie, etu, a.demo, a.apercu)
+    if a.reprendre:
+        c.reprise, c.params_reprise = lire_reprise(a.reprendre)
+        print("Reprise :", {k: len(v) for k, v in c.reprise.items()})
     c.construire()
     os.remove(c._vba_tmp)
     print(f"Classeur créé : {a.sortie}  ({len(etu)} étudiants)")

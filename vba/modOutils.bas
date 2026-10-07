@@ -138,6 +138,43 @@ Public Function InfoMatiere(ByVal code As String, ByVal colonne As String) As St
     Next i
 End Function
 
+' Code matière contenu dans un libellé « GEC2304 – Ponts » (premier mot).
+Public Function CodeDe(ByVal s As String) As String
+    s = Trim$(s)
+    If InStr(s, " ") > 0 Then s = Left$(s, InStr(s, " ") - 1)
+    CodeDe = s
+End Function
+
+' Libellé affiché dans les listes déroulantes : « code – abrégé ».
+Public Function Libelle(ByVal code As String) As String
+    If code = "" Then Exit Function
+    Libelle = code & " – " & InfoMatiere(code, "Abrégé")
+End Function
+
+' Remplace un libellé choisi dans une liste par le seul code, dans les
+' colonnes « Code matière » des tableaux de la feuille.
+Public Sub NormaliserCodes(ws As Worksheet, ByVal Target As Range)
+    Dim lo As ListObject, z As Range, c As Range, v As String, idx As Long
+    If Target.CountLarge > 5000 Then Exit Sub
+    For Each lo In ws.ListObjects
+        idx = 0
+        On Error Resume Next
+        idx = lo.ListColumns("Code matière").Index
+        On Error GoTo 0
+        If idx > 0 And Not lo.DataBodyRange Is Nothing Then
+            Set z = Intersect(Target, lo.ListColumns(idx).DataBodyRange)
+            If Not z Is Nothing Then
+                Application.EnableEvents = False
+                For Each c In z.Cells
+                    v = CodeDe(CStr(c.Value))
+                    If v <> CStr(c.Value) Then c.Value = v
+                Next c
+                Application.EnableEvents = True
+            End If
+        End If
+    Next lo
+End Sub
+
 Public Function MatiereExiste(ByVal code As String) As Boolean
     Dim v As Variant, i As Long
     v = Donnees(Tbl("tblMatieres"))
@@ -333,6 +370,16 @@ Public Sub AjouterLigne()
     If lo.Name = "tblEtudiants" Then r.Cells(1, 1).Value = Application.WorksheetFunction.Max(lo.ListColumns(1).Range) + 1
     Verrouiller ws
     If lo.Name = "tblEtudiants" Then r.Cells(1, 2).Select Else r.Cells(1, 1).Select
+End Sub
+
+Public Sub AjouterEnseignant()
+    Dim lo As ListObject, r As Range
+    Set lo = Tbl("tblEnseignants")
+    Deverrouiller lo.Parent
+    Set r = NouvelleLigne(lo)
+    Verrouiller lo.Parent
+    lo.Parent.Activate
+    r.Cells(1, 1).Select
 End Sub
 
 Public Sub SupprimerLignes()
