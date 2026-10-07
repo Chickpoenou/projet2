@@ -71,20 +71,41 @@ Public Function LigneVide(r As Range) As Boolean
 End Function
 
 ' Renvoie une ligne libre du tableau (réutilise la ligne vierge initiale).
+' Les événements sont suspendus pendant l'ajout : une macro déclenchée au
+' milieu de l'insertion rendrait la nouvelle ligne inutilisable (erreur 424).
 Public Function NouvelleLigne(lo As ListObject) As Range
-    If lo.ListRows.Count = 0 Then
-        Set NouvelleLigne = lo.ListRows.Add.Range
-    ElseIf lo.ListRows.Count = 1 And LigneVide(lo.ListRows(1).Range) Then
-        Set NouvelleLigne = lo.ListRows(1).Range
-    Else
-        Set NouvelleLigne = lo.ListRows.Add.Range
+    Dim ev As Boolean, lr As ListRow
+    ev = Application.EnableEvents
+    Application.EnableEvents = False
+    If lo.ListRows.Count = 1 Then
+        If LigneVide(lo.ListRows(1).Range) Then Set lr = lo.ListRows(1)
     End If
+    If lr Is Nothing Then Set lr = lo.ListRows.Add
+    Set NouvelleLigne = lo.ListRows(lr.Index).Range
+    Application.EnableEvents = ev
 End Function
+
+' Affiche une erreur claire, puis remet Excel dans un état normal.
+Public Sub Signaler(ByVal proc As String)
+    Dim n As Long, d As String
+    n = Err.Number: d = Err.Description
+    On Error Resume Next
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    Application.Calculation = xlCalculationAutomatic
+    ProtegerTout
+    MsgBox "Une erreur est survenue dans la macro « " & proc & " »." & vbLf & _
+           "Erreur " & n & " : " & d & vbLf & vbLf & _
+           "Faites une capture de ce message pour la correction.", vbExclamation, "Suivi GC5"
+End Sub
 
 ' Ajoute un bloc de valeurs (tableau 2D 1..n x nb colonnes) en une seule fois.
 ' Réservé aux tableaux sans colonne calculée.
 Public Sub AjouterBloc(lo As ListObject, data As Variant)
     Dim n As Long, nbExist As Long
+    Dim ev As Boolean
+    ev = Application.EnableEvents
+    Application.EnableEvents = False
     n = UBound(data, 1)
     nbExist = lo.ListRows.Count
     If nbExist = 1 Then
@@ -92,6 +113,7 @@ Public Sub AjouterBloc(lo As ListObject, data As Variant)
     End If
     lo.Resize lo.HeaderRowRange.Resize(1 + nbExist + n)
     lo.HeaderRowRange.Offset(1 + nbExist, 0).Resize(n).Value = data
+    Application.EnableEvents = ev
 End Sub
 
 ' Prochain identifiant : préfixe + numéro (ex. S0001, R001).
@@ -266,6 +288,7 @@ End Sub
 
 Public Sub ModeAdministrateur()
     Dim s As String, ws As Worksheet
+    On Error GoTo erreur
     If ModeAdmin Then
         If MsgBox("Le mode administrateur est actif. Reverrouiller les feuilles ?", vbYesNo + vbQuestion) = vbYes Then
             ModeAdmin = False
@@ -286,6 +309,9 @@ Public Sub ModeAdministrateur()
     Next ws
     MsgBox "Mode administrateur actif : toutes les feuilles sont modifiables." & vbLf & _
            "Recliquez sur le bouton (ou fermez le classeur) pour reverrouiller.", vbInformation
+    Exit Sub
+erreur:
+    Signaler "ModeAdministrateur"
 End Sub
 
 ' ---------- Performances ----------
@@ -322,6 +348,8 @@ End Sub
 Public Sub InitialiserClasseur()
     Dim ws As Worksheet
     On Error Resume Next
+    Application.EnableEvents = True
+    Application.Calculation = xlCalculationAutomatic
     Application.ScreenUpdating = False
     For Each ws In ThisWorkbook.Worksheets
         Deverrouiller ws
@@ -337,6 +365,7 @@ End Sub
 
 Public Sub Actualiser()
     On Error Resume Next
+    Application.EnableEvents = True
     Application.ScreenUpdating = False
     MajTousMembres
     Application.CalculateFull
@@ -363,6 +392,7 @@ End Sub
 ' ---------- Lignes génériques ----------
 Public Sub AjouterLigne()
     Dim lo As ListObject, r As Range, ws As Worksheet
+    On Error GoTo erreur
     Set ws = ActiveSheet
     If ws.ListObjects.Count = 0 Then Exit Sub
     Set lo = ws.ListObjects(1)
@@ -371,21 +401,29 @@ Public Sub AjouterLigne()
     If lo.Name = "tblEtudiants" Then r.Cells(1, 1).Value = Application.WorksheetFunction.Max(lo.ListColumns(1).Range) + 1
     Verrouiller ws
     If lo.Name = "tblEtudiants" Then r.Cells(1, 2).Select Else r.Cells(1, 1).Select
+    Exit Sub
+erreur:
+    Signaler "AjouterLigne"
 End Sub
 
 Public Sub AjouterEnseignant()
     Dim lo As ListObject, r As Range
+    On Error GoTo erreur
     Set lo = Tbl("tblEnseignants")
     Deverrouiller lo.Parent
     Set r = NouvelleLigne(lo)
     Verrouiller lo.Parent
     lo.Parent.Activate
     r.Cells(1, 1).Select
+    Exit Sub
+erreur:
+    Signaler "AjouterEnseignant"
 End Sub
 
 Public Sub SupprimerLignes()
     Dim lo As ListObject, ws As Worksheet, zone As Range, i As Long, n As Long
     Dim ids As Collection, id As Variant
+    On Error GoTo erreur
     Set ws = ActiveSheet
     If ws.ListObjects.Count = 0 Then Exit Sub
     Set lo = ws.ListObjects(1)
@@ -417,6 +455,9 @@ Public Sub SupprimerLignes()
         Next id
     End If
     FinTraitement
+    Exit Sub
+erreur:
+    Signaler "SupprimerLignes"
 End Sub
 
 Public Sub SupprimerPresences(ByVal id As String)

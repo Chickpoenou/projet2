@@ -166,6 +166,7 @@ End Sub
 ' Copie les groupes par défaut dans GROUPES pour la matière choisie.
 Public Sub PreparerGroupesMatiere()
     Dim code As String, ve As Variant, loE As ListObject, i As Long, n As Long, data() As Variant
+    On Error GoTo erreur
     code = CodeDe(CStr(shGroupes.Range("C5").Value))
     If code = "" Or Not MatiereExiste(code) Then
         MsgBox "Choisissez d'abord une matière dans la case « Matière ».", vbExclamation
@@ -198,10 +199,14 @@ Public Sub PreparerGroupesMatiere()
     RemplirGroupes
     MsgBox n & " étudiants copiés pour " & code & "." & vbLf & _
            "Modifiez maintenant la colonne « Groupe » (ou supprimez les étudiants qui ne suivent pas cette matière).", vbInformation
+    Exit Sub
+erreur:
+    Signaler "PreparerGroupesMatiere"
 End Sub
 
 Public Sub SupprimerGroupesMatiere()
     Dim code As String, lo As ListObject, i As Long, n As Long
+    On Error GoTo erreur
     code = CodeDe(CStr(shGroupes.Range("C5").Value))
     If Not GroupesSpecifiques(code) Then
         MsgBox "Aucun groupe spécifique pour cette matière.", vbInformation
@@ -223,4 +228,7 @@ Public Sub SupprimerGroupesMatiere()
     FinTraitement
     RemplirGroupes
     MsgBox n & " ligne(s) supprimée(s).", vbInformation
+    Exit Sub
+erreur:
+    Signaler "SupprimerGroupesMatiere"
 End Sub

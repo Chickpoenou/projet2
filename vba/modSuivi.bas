@@ -6,6 +6,7 @@ Option Explicit
 ' ----------------------------------------------------------------- RAPPORTS
 Public Sub NouveauRapport()
     Dim lo As ListObject, r As Range
+    On Error GoTo erreur
     Set lo = Tbl("tblRapports")
     Deverrouiller lo.Parent
     Set r = NouvelleLigne(lo)
@@ -19,6 +20,9 @@ Public Sub NouveauRapport()
     MsgBox "Rapport " & r.Cells(1, 1).Value & " créé." & vbLf & vbLf & _
            "1. Choisissez la matière, saisissez l'intitulé, le type (Individuel / Groupe) et la date limite." & vbLf & _
            "2. Cliquez ensuite sur « Générer les remises attendues ».", vbInformation
+    Exit Sub
+erreur:
+    Signaler "NouveauRapport"
 End Sub
 
 Private Function RapportSelectionne() As Range
@@ -40,6 +44,7 @@ Public Sub GenererRemises()
     Dim loR As ListObject, loM As ListObject, rr As Range, id As String, code As String, typ As String
     Dim existants As Object, v As Variant, i As Long, n As Long, qui As Variant
     Dim liste As Variant, cibles As New Collection, r As Range
+    On Error GoTo erreur
     Set loR = Tbl("tblRapports")
     Set loM = Tbl("tblRemises")
     Set rr = RapportSelectionne()
@@ -92,10 +97,14 @@ Public Sub GenererRemises()
     FinTraitement
     MsgBox n & " remise(s) attendue(s) ajoutée(s) pour " & id & " (" & typ & ")." & vbLf & _
            "Sur la feuille REMISES, sélectionnez les lignes et cliquez sur « Marquer remis » à chaque dépôt.", vbInformation
+    Exit Sub
+erreur:
+    Signaler "GenererRemises"
 End Sub
 
 Public Sub MarquerRemis()
     Dim lo As ListObject, z As Range, i As Long, n As Long, r As Range
+    On Error GoTo erreur
     Set lo = Tbl("tblRemises")
     If lo.DataBodyRange Is Nothing Or Not ActiveSheet Is lo.Parent Then Exit Sub
     Set z = Intersect(Selection, lo.DataBodyRange)
@@ -118,6 +127,9 @@ Public Sub MarquerRemis()
     Verrouiller lo.Parent
     Application.EnableEvents = True
     MsgBox n & " remise(s) enregistrée(s) le " & Format$(Date, "dd/mm/yyyy") & " à " & Format$(Time, "hh:nn") & ".", vbInformation
+    Exit Sub
+erreur:
+    Signaler "MarquerRemis"
 End Sub
 
 Private Sub FiltrerStatut(lo As ListObject, ByVal critere As String)
@@ -147,6 +159,7 @@ Public Sub ToutAfficherExposes(): FiltrerStatut Tbl("tblExposes"), "": End Sub
 Public Sub GenererExposes()
     Dim code As String, lo As ListObject, v As Variant, i As Long, n As Long
     Dim existants As Object, g As Variant, r As Range
+    On Error GoTo erreur
     code = CodeDe(CStr(shExposes.Range("C4").Value))
     If code = "" Or Not MatiereExiste(code) Then
         MsgBox "Choisissez d'abord la matière dans la case « Matière » (en haut).", vbExclamation
@@ -176,10 +189,14 @@ Public Sub GenererExposes()
     RemplirSyntheseExposes
     MsgBox n & " exposé(s) ajouté(s) pour " & code & "." & vbLf & _
            "Complétez le thème et la date prévue de chaque groupe.", vbInformation
+    Exit Sub
+erreur:
+    Signaler "GenererExposes"
 End Sub
 
 Public Sub MarquerPresente()
     Dim lo As ListObject, z As Range, i As Long, n As Long, r As Range
+    On Error GoTo erreur
     Set lo = Tbl("tblExposes")
     If lo.DataBodyRange Is Nothing Or Not ActiveSheet Is lo.Parent Then Exit Sub
     Set z = Intersect(Selection, lo.DataBodyRange)
@@ -201,12 +218,16 @@ Public Sub MarquerPresente()
     Application.EnableEvents = True
     RemplirSyntheseExposes
     MsgBox n & " exposé(s) marqué(s) « Présenté ».", vbInformation
+    Exit Sub
+erreur:
+    Signaler "MarquerPresente"
 End Sub
 
 ' ---------------------------------------------------------- FICHE ÉTUDIANT
 Public Sub RechercherEtudiant()
     Dim txt As String, v As Variant, lo As ListObject, i As Long, c As Long
     Dim trouves As New Collection, liste As String, choix As String, k As Long
+    On Error GoTo erreur
     txt = SansAccents(LCase$(Trim$(CStr(shFiche.Range("C5").Value))))
     If txt = "" Then Exit Sub
     Set lo = Tbl("tblEtudiants")
@@ -236,6 +257,9 @@ Public Sub RechercherEtudiant()
     shFiche.Range("C7").Value = choix
     Application.EnableEvents = True
     RemplirFiche
+    Exit Sub
+erreur:
+    Signaler "RechercherEtudiant"
 End Sub
 
 Public Sub ExporterFichePDF()

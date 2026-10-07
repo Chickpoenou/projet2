@@ -86,6 +86,7 @@ End Sub
 ' ---------------------------------------------------------------- boutons
 Public Sub DemarrerCours()
     Dim code As String
+    On Error GoTo erreur
     If Not ConfirmerAbandon() Then Exit Sub
     code = CoursDuMoment()
     DebutTraitement
@@ -113,15 +114,23 @@ Public Sub DemarrerCours()
                "Séance n° " & shSaisie.Range(A_ID).Value & " créée dans le cahier de texte." & vbLf & vbLf & _
                "Indiquez la présence du professeur, faites l'appel puis cliquez sur ENREGISTRER.", vbInformation
     End If
+    Exit Sub
+erreur:
+    Signaler "DemarrerCours"
 End Sub
 
 Public Sub EnregistrerSeance()
+    On Error GoTo erreur
     If Enregistrer(True) Then
         MsgBox "Séance " & shSaisie.Range(A_ID).Value & " enregistrée." & vbLf & ResumeAppel(), vbInformation
     End If
+    Exit Sub
+erreur:
+    Signaler "EnregistrerSeance"
 End Sub
 
 Public Sub CloturerSeance()
+    On Error GoTo erreur
     If CodeDe(CStr(shSaisie.Range(A_CODE).Value)) = "" Then
         MsgBox "Aucune séance en cours.", vbInformation
         Exit Sub
@@ -135,9 +144,13 @@ Public Sub CloturerSeance()
         MsgBox "Séance " & shSaisie.Range(A_ID).Value & " clôturée à " & Format$(shSaisie.Range(A_FIN).Value, "hh:nn") & "." & _
                vbLf & ResumeAppel(), vbInformation
     End If
+    Exit Sub
+erreur:
+    Signaler "CloturerSeance"
 End Sub
 
 Public Sub NouvelleSeance()
+    On Error GoTo erreur
     If Not ConfirmerAbandon() Then Exit Sub
     DebutTraitement
     Deverrouiller shSaisie
@@ -149,10 +162,14 @@ Public Sub NouvelleSeance()
     Verrouiller shSaisie
     FinTraitement
     shSaisie.Range(A_CODE).Select
+    Exit Sub
+erreur:
+    Signaler "NouvelleSeance"
 End Sub
 
 Public Sub TousPresents()
     Dim r As Long, n As Long
+    On Error GoTo erreur
     Application.EnableEvents = False
     For r = L1 To LMAX
         If Trim$(CStr(shSaisie.Cells(r, C_NOM).Value)) <> "" And Not shSaisie.Rows(r).Hidden Then
@@ -164,6 +181,9 @@ Public Sub TousPresents()
     Next r
     Application.EnableEvents = True
     MsgBox n & " étudiant(s) marqué(s) présent(s). Corrigez les absents (A), retards (R) et excusés (E).", vbInformation
+    Exit Sub
+erreur:
+    Signaler "TousPresents"
 End Sub
 
 Private Function ResumeAppel() As String

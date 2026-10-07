@@ -86,7 +86,11 @@ erreur:
 End Sub
 
 Public Sub OuvrirDossierPDF()
+    On Error GoTo erreur
     OuvrirDossier DossierExport("")
+    Exit Sub
+erreur:
+    Signaler "OuvrirDossierPDF"
 End Sub
 
 ' ------------------------------------------------------------------ outils
