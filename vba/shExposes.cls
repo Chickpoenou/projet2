@@ -1,4 +1,9 @@
 Option Explicit
+
+Private Sub Worksheet_Activate()
+    On Error Resume Next
+    RemplirSyntheseExposes
+End Sub
 ' Met à jour la colonne « Membres » lorsque la matière, le groupe ou le
 ' responsable de la remise change.
 
@@ -16,6 +21,7 @@ Private Sub Worksheet_Change(ByVal Target As Range)
     For Each c In Intersect(z.EntireRow, lo.DataBodyRange.Columns(1)).Cells
         MajMembresLigne lo, lo.ListRows(c.Row - lo.HeaderRowRange.Row).Range
     Next c
+    RemplirSyntheseExposes
 fin:
     Verrouiller Me
     Application.EnableEvents = True

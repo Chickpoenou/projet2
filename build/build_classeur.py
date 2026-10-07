@@ -157,6 +157,19 @@ def sans_xlookup(f):
     return f
 
 
+def _compat(methode):
+    """Enveloppe une méthode d'écriture de formule : XLOOKUP -> INDEX/MATCH (Excel 2016/2019)."""
+    def f(self, *args, **kw):
+        args = [sans_xlookup(a) if isinstance(a, str) and "XLOOKUP(" in a else a for a in args]
+        return methode(self, *args, **kw)
+    return f
+
+
+from xlsxwriter.worksheet import Worksheet as _WS  # noqa: E402
+for _m in ("write_formula", "write_array_formula", "write_dynamic_array_formula"):
+    setattr(_WS, _m, _compat(getattr(_WS, _m)))
+
+
 def heure(h, m=0):
     return dt.time(h, m)
 
@@ -390,7 +403,7 @@ class Classeur:
         ws.write_dynamic_array_formula(
             "P6:P6",
             f"=IFERROR(MATCH(1,(tblEDT[N° jour]={jour})*(tblEDT[Début]-pMarge/1440<={maint})*(tblEDT[Fin]>{maint}),0),0)")
-        ws.write_formula("P7", '=IFERROR(MATCH(MINIFS(tblEDT[Minutes avant],tblEDT[Minutes avant],">"&pMarge),tblEDT[Minutes avant],0),0)')
+        ws.write_array_formula("P7:P7", '{=IFERROR(MATCH(MIN(IF(ISNUMBER(tblEDT[Minutes avant]),IF(tblEDT[Minutes avant]>pMarge,tblEDT[Minutes avant]))),tblEDT[Minutes avant],0),0)}')
         ws.write_formula("P8", "=IF(P7=0,\"\",INDEX(tblEDT[Minutes avant],P7))")
 
         # Cartes cours du moment / prochain cours
@@ -765,24 +778,11 @@ class Classeur:
             ws.write_formula(r, 1, f'=IFERROR(INDEX(tblMatieres[Code],{k + 1}),"")', self.f(bg_color=fond, bold=True,
                                                                                          align="center"))
             ws.write_formula(r, 2, f'=IF($B{x}="","",INDEX(tblMatieres[Intitulé],{k + 1}))', celg)
-            groupes = (f"IF(COUNTIF(tblGroupes[Code matière],$B{x})>0,UNIQUE(FILTER(tblGroupes[Groupe],"
-                       f"tblGroupes[Code matière]=$B{x})),UNIQUE(FILTER(tblEtudiants[Groupe],tblEtudiants[Groupe]<>\"\")))")
-            passes = (f'FILTER(tblExposes[Groupe],(tblExposes[Code matière]=$B{x})*(tblExposes[Statut]="Présenté"),"")')
-            aucun = f'COUNTIF(tblExposes[Code matière],$B{x})=0'
-            ws.write_dynamic_array_formula(r, 3, r, 3, self.let(
-                f'=IF($B{x}="","",IF({aucun},"—",LET(§g,{groupes},ROWS(§g))))'), cel)
-            ws.write_formula(r, 4, f'=IF($B{x}="","",IF({aucun},"—",COUNTIFS(tblExposes[Code matière],$B{x},tblExposes[Statut],"Présenté")))', cel)
-            ws.write_dynamic_array_formula(r, 5, r, 5, self.let(
-                f'=IF($B{x}="","",IF({aucun},"—",LET(§g,{groupes},§p,{passes},SUM(--ISNA(MATCH(§g,§p,0))))))'), cel)
+            ws.write_blank(r, 3, None, cel)
+            ws.write_formula(r, 4, f'=IF($B{x}="","",IF(COUNTIF(tblExposes[Code matière],$B{x})=0,"—",COUNTIFS(tblExposes[Code matière],$B{x},tblExposes[Statut],"Présenté")))', cel)
+            ws.write_blank(r, 5, None, cel)
             ws.merge_range(r, 6, r, 7, "", celg)
-            ws.write_dynamic_array_formula(r, 6, r, 6, self.let(
-                f'=IF($B{x}="","",IF({aucun},"Aucun exposé programmé",LET(§p,UNIQUE({passes}),§t,TEXTJOIN(", ",TRUE,SORTBY(§p,LEN(§p),1,§p,1)),IF(§t="","Aucun pour l\'instant",§t))))'),
-                celg)
             ws.merge_range(r, 8, r, 10, "", celg)
-            ws.write_dynamic_array_formula(r, 8, r, 8, self.let(
-                f'=IF($B{x}="","",IF({aucun},"",LET(§g,{groupes},§p,{passes},§r,FILTER(§g,ISNA(MATCH(§g,§p,0)),""),'
-                f'§t,TEXTJOIN(", ",TRUE,SORTBY(§r,LEN(§r),1,§r,1)),IF(§t="","✔ Tous les groupes ont présenté",§t))))'),
-                celg)
         ws.conditional_format("F8:F22", {"type": "cell", "criteria": ">", "value": 0,
                                          "format": self.f(bold=True, font_color="#C55A11")})
         ws.conditional_format("I8:I22", {"type": "formula", "criteria": '=LEFT($I8,1)="✔"',
@@ -1018,15 +1018,6 @@ class Classeur:
         self.section(ws, 4, 27, 34, "EXPOSÉS DE SES GROUPES", OR)
         for c, t in enumerate(["Code", "Matière", "Groupe", "Thème", "Date prévue", "Passage", "Statut", "Note"]):
             ws.write(5, 27 + c, t, tht)
-        cont = f'ISNUMBER(SEARCH("|"&{nom}&"|",'
-        ws.write_dynamic_array_formula(
-            "B35:B35", f'=IF({nom}="","",SORT(FILTER(tblPresences[[Code matière]:[Heure]],(tblPresences[Étudiant]={nom})*(tblPresences[Statut]="A"),"Aucune absence"),3,-1))')
-        ws.write_dynamic_array_formula(
-            "M7:M7", f'=IF({nom}="","",SORT(FILTER(tblPresences[[Code matière]:[Statut]],tblPresences[Étudiant]={nom},"Aucune séance enregistrée"),3,-1))')
-        ws.write_dynamic_array_formula(
-            "S7:S7", f'=IF({nom}="","",FILTER(tblRemises[[Code matière]:[Statut]],{cont}tblRemises[Membres])),"Aucun rapport"))')
-        ws.write_dynamic_array_formula(
-            "AB7:AB7", f'=IF({nom}="","",FILTER(tblExposes[[Code matière]:[Note sur 20]],{cont}tblExposes[Membres])),"Aucun exposé"))')
         # Formats des colonnes de listes
         for col, nf in (("D", "dd/mm/yyyy"), ("E", "hh:mm"), ("O", "dd/mm/yyyy"), ("P", "hh:mm"),
                         ("W", "dd/mm/yyyy hh:mm"), ("X", "dd/mm/yyyy"), ("Y", "hh:mm"),
@@ -1085,9 +1076,9 @@ class Classeur:
                                                                               num_format="0.0"))
             ws.write_formula(r, 10, f'=IF({vide},"",IF(N(E{x})=0,0,I{x}/E{x}))',
                              self.f(bg_color=fond, align="center", num_format="0%"))
-            ws.write_formula(r, 11, f'=IF({vide},"",IF(COUNTIF(tblSeances[Code matière],{c})=0,"—",MAXIFS(tblSeances[Date],tblSeances[Code matière],{c})))',
+            ws.write_array_formula(r, 11, r, 11, f'{{=IF({vide},"",IF(COUNTIF(tblSeances[Code matière],{c})=0,"—",MAX(IF(tblSeances[Code matière]={c},tblSeances[Date]))))}}',
                              self.f(bg_color=fond, align="center", num_format="dd/mm/yyyy"))
-            ws.write_formula(r, 12, f'=IF({vide},"",XLOOKUP({c},tblSeances[Code matière],tblSeances[Contenu / chapitres traités],"—",0,-1)&"")',
+            ws.write_array_formula(r, 12, r, 12, f'=IF({vide},"",IFERROR(LOOKUP(2,1/(tblSeances[Code matière]={c}),tblSeances[Contenu / chapitres traités])&"","—"))',
                              self.f(bg_color=fond, indent=1, font_size=9, text_wrap=True))
             ws.write_formula(r, 13, f'=IF({vide},"",IFERROR((COUNTIFS(tblPresences[Code matière],{c},tblPresences[Statut],"P")+COUNTIFS(tblPresences[Code matière],{c},tblPresences[Statut],"R"))/COUNTIFS(tblPresences[Code matière],{c}),"—"))',
                              self.f(bg_color=fond, align="center", num_format="0%"))
@@ -1109,9 +1100,6 @@ class Classeur:
             ws.write_blank(r, 3, None, self.f(num_format="hh:mm", align="center"))
             ws.write_blank(r, 4, None, self.f(num_format="hh:mm", align="center"))
         self.par_enseignant(ws)
-        ws.write_dynamic_array_formula(
-            "B26:B26",
-            '=FILTER(tblSeances[[Date]:[Remplaçant ou motif]],(tblSeances[Présence prof]<>"Présent")*(tblSeances[Présence prof]<>""),"Aucune absence ni retard d\'enseignant enregistré")')
         ws.freeze_panes(6, 2)
 
     def par_enseignant(self, ws):
@@ -1155,11 +1143,6 @@ class Classeur:
             ws.write_blank(r, 15, None, self.f(num_format="dd/mm/yyyy", align="center", font_size=9))
             ws.write_blank(r, 17, None, self.f(num_format="hh:mm", align="center", font_size=9))
             ws.write_blank(r, 18, None, self.f(num_format="hh:mm", align="center", font_size=9))
-        ws.write_dynamic_array_formula(
-            "P12:P12",
-            '=IF($Q$6="","",SORT(FILTER(tblSeances[[Date]:[Contenu / chapitres traités]],'
-            'ISNUMBER(SEARCH($Q$6,tblSeances[Enseignant prévu]))+(tblSeances[Remplaçant ou motif]=$Q$6),'
-            '"Aucune séance enregistrée pour cet enseignant"),1,-1))')
         for v, st in (("Absent", "A"), ("Retard", "R"), ("Présent", "P"), ("Remplacé", "E")):
             ws.conditional_format("X12:X311", {"type": "cell", "criteria": "==", "value": f'"{v}"',
                                                "format": self.f(bg_color=STATUTS[st][0], font_color=STATUTS[st][1])})
@@ -1403,7 +1386,7 @@ class Classeur:
 
     # ---------------------------------------------------------- GROUPES
     def groupes(self):
-        larg = [12, 34, 11, 12, 3] + [24] * 10
+        larg = [12, 34, 11, 12, 3] + [21] * 16
         ws = self.feuille("GROUPES", "shGroupes", "#7F7F7F", "GROUPES PAR MATIÈRE",
                           "Par défaut, chaque matière utilise les groupes de la feuille ÉTUDIANTS. Si une matière a des "
                           "groupes différents : choisissez-la, cliquez sur « Préparer », puis modifiez la colonne Groupe "
@@ -1432,20 +1415,14 @@ class Classeur:
         self.dv_liste(ws, f"C10:C{NB_LIGNES_TABLE}", "=LstEtudiants")
         self.dv_liste(ws, f"D10:D{NB_LIGNES_TABLE}", "=LstGroupes")
         # Composition
-        self.section(ws, 7, 6, 15, "COMPOSITION DES GROUPES POUR LA MATIÈRE CHOISIE", VERT)
-        cg = 'LEFT($C$5,FIND(" ",$C$5&" ")-1)'
-        groupes = (f'IF(COUNTIF(tblGroupes[Code matière],{cg})>0,UNIQUE(FILTER(tblGroupes[Groupe],tblGroupes[Code matière]={cg})),'
-                   'UNIQUE(FILTER(tblEtudiants[Groupe],tblEtudiants[Groupe]<>"")))')
-        th = self.f(bold=True, font_color=BLANC, bg_color=VERT, align="center")
-        for k in range(10):
+        self.section(ws, 7, 6, 21, "COMPOSITION DES GROUPES POUR LA MATIÈRE CHOISIE (mise à jour automatique)", VERT)
+        th = self.f(bold=True, font_color=BLANC, bg_color=VERT, align="center", text_wrap=True)
+        for k in range(16):
             col = 6 + k
-            cn = xl_col_to_name(col)
-            ws.write_dynamic_array_formula(8, col, 8, col, self.let(
-                f'=IFERROR(LET(§g,{groupes},§s,SORTBY(§g,LEN(§g),1,§g,1),INDEX(§s,{k + 1})),"")'), th)
-            ws.write_dynamic_array_formula(9, col, 9, col, f'=IF({cn}$9="","",IF(COUNTIF(tblGroupes[Code matière],{cg})>0,FILTER(tblGroupes[Étudiant],(tblGroupes[Code matière]={cg})*(tblGroupes[Groupe]={cn}$9),""),FILTER(tblEtudiants[Nom et prénoms],tblEtudiants[Groupe]={cn}$9,"")))',
-                                           self.f(font_size=9, indent=1))
-            for r in range(10, 40):
+            ws.write_blank(8, col, None, th)
+            for r in range(9, 60):
                 ws.write_blank(r, col, None, self.f(font_size=9, indent=1, bottom=4, bottom_color="#E7E6E6"))
+        ws.set_row(8, 30)
 
     # --------------------------------------------------------- MATIÈRES
     def matieres(self):

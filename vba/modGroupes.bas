@@ -101,7 +101,7 @@ Public Function GroupesMatiere(ByVal code As String) As Collection
     Next i
 End Function
 
-Private Function CleTri(ByVal s As String) As String
+Public Function CleTri(ByVal s As String) As String
     Dim i As Long, p As Long
     p = 0
     For i = Len(s) To 1 Step -1
@@ -195,6 +195,7 @@ Public Sub PreparerGroupesMatiere()
     Verrouiller shGroupes
     MajTousMembres
     FinTraitement
+    RemplirGroupes
     MsgBox n & " étudiants copiés pour " & code & "." & vbLf & _
            "Modifiez maintenant la colonne « Groupe » (ou supprimez les étudiants qui ne suivent pas cette matière).", vbInformation
 End Sub
@@ -220,5 +221,6 @@ Public Sub SupprimerGroupesMatiere()
     Verrouiller shGroupes
     MajTousMembres
     FinTraitement
+    RemplirGroupes
     MsgBox n & " ligne(s) supprimée(s).", vbInformation
 End Sub

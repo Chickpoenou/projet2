@@ -173,6 +173,7 @@ Public Sub GenererExposes()
     Next g
     Verrouiller lo.Parent
     FinTraitement
+    RemplirSyntheseExposes
     MsgBox n & " exposé(s) ajouté(s) pour " & code & "." & vbLf & _
            "Complétez le thème et la date prévue de chaque groupe.", vbInformation
 End Sub
@@ -198,6 +199,7 @@ Public Sub MarquerPresente()
     Next i
     Verrouiller lo.Parent
     Application.EnableEvents = True
+    RemplirSyntheseExposes
     MsgBox n & " exposé(s) marqué(s) « Présenté ».", vbInformation
 End Sub
 
@@ -233,7 +235,7 @@ Public Sub RechercherEtudiant()
     Application.EnableEvents = False
     shFiche.Range("C7").Value = choix
     Application.EnableEvents = True
-    Application.Calculate
+    RemplirFiche
 End Sub
 
 Public Sub ExporterFichePDF()
@@ -244,7 +246,7 @@ Public Sub ExporterFichePDF()
         Exit Sub
     End If
     On Error GoTo erreur
-    Application.Calculate
+    RemplirFiche
     ' Zone 1 : identité, bilan, matières, absences et historique (B:Q)
     ' Zone 2 : rapports et exposés (S:AI)
     derL1 = DerniereLigne(shFiche, 2, 17)

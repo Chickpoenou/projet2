@@ -8,7 +8,7 @@ Il regroupe :
 - **le suivi des étudiants** : fiche individuelle, alertes d'absences, rapports, exposés ;
 - **le suivi des enseignants** : séances tenues, absences, heures faites par rapport au volume prévu.
 
-Configuration requise : Excel 365 ou 2021 sous Windows.
+Configuration requise : Excel 2016, 2019, 2021 ou 365 sous Windows. Le classeur n'utilise pas les fonctions réservées à Excel 365 (XLOOKUP, FILTER, LET…) : les listes de consultation sont remplies par les macros.
 
 > **Nouveau :** une feuille **MODE D'EMPLOI** pas à pas est incluse dans le classeur (2e onglet, et lien « ? Mode d'emploi » en haut de chaque feuille).
 

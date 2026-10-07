@@ -340,6 +340,7 @@ Public Sub Actualiser()
     Application.ScreenUpdating = False
     MajTousMembres
     Application.CalculateFull
+    ActualiserVues
     Application.ScreenUpdating = True
 End Sub
 
