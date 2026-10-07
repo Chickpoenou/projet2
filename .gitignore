@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+vbaProject.bin
+~$*
+Export_PDF/
+Sauvegardes/
