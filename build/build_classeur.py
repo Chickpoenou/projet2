@@ -1373,8 +1373,8 @@ class Classeur:
     def etudiants_f(self):
         larg = [6, 34, 11, 12, 32, 15, 3, 12, 10]
         ws = self.feuille("ÉTUDIANTS", "shEtudiants", "#7F7F7F", "LISTE DES ÉTUDIANTS",
-                          "Le « Groupe » indiqué ici est le groupe par défaut, utilisé pour toutes les matières sauf celles "
-                          "qui ont des groupes spécifiques (feuille GROUPES).", larg, 9)
+                          "Le « Groupe » indiqué ici est le groupe par défaut (= groupes de TPS, Travaux Pratiques Spécialisés). "
+                          "Il sert pour toutes les matières sauf celles qui ont leurs propres groupes (feuille GROUPES).", larg, 9)
         ws.set_row(3, 30)
         self.rangee(ws, 3, [
             ("＋  Ajouter un étudiant", dict(macro="AjouterLigne", couleur="#7F7F7F", larg=170)),
