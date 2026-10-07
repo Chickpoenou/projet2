@@ -36,13 +36,13 @@ Private Sub Trier(data() As Variant, cles() As Double, ByVal n As Long, ByVal nc
     Next i
 End Sub
 
-Private Sub Ecrire(ws As Worksheet, ByVal ligne As Long, ByVal col As Long, ByVal nc As Long, _
+Private Sub Ecrire(ws As Worksheet, ByVal ligne As Long, ByVal cl As Long, ByVal nc As Long, _
                    data() As Variant, ByVal n As Long, ByVal messageVide As String)
-    ws.Range(ws.Cells(ligne, col), ws.Cells(ligne + MAXL - 1, col + nc - 1)).ClearContents
+    ws.Range(ws.Cells(ligne, cl), ws.Cells(ligne + MAXL - 1, cl + nc - 1)).ClearContents
     If n = 0 Then
-        ws.Cells(ligne, col).Value = messageVide
+        ws.Cells(ligne, cl).Value = messageVide
     Else
-        ws.Cells(ligne, col).Resize(n, nc).Value = Couper(data, n, nc)
+        ws.Cells(ligne, cl).Resize(n, nc).Value = Couper(data, n, nc)
     End If
 End Sub
 
@@ -66,7 +66,7 @@ End Sub
 Public Sub RemplirFiche()
     Dim nom As String, lo As ListObject, v As Variant, i As Long, n As Long
     Dim data() As Variant, cles() As Double, c1 As Long, c2 As Long
-    Dim cEtu As Long, cStat As Long, cDate As Long, cHeure As Long, cM As Long
+    Dim cEtu As Long, cStat As Long, cDat As Long, cHeure As Long, cM As Long
     nom = Trim$(CStr(shFiche.Range("C7").Value))
     Application.Calculate
     Application.ScreenUpdating = False
@@ -76,7 +76,7 @@ Public Sub RemplirFiche()
     Set lo = Tbl("tblPresences")
     v = Donnees(lo)
     cEtu = Col(lo, "Étudiant"): cStat = Col(lo, "Statut")
-    cDate = Col(lo, "Date"): cHeure = Col(lo, "Heure")
+    cDat = Col(lo, "Date"): cHeure = Col(lo, "Heure")
     c1 = Col(lo, "Code matière")
     ReDim data(1 To MAXL, 1 To 5): ReDim cles(1 To MAXL)
     n = 0
@@ -85,7 +85,7 @@ Public Sub RemplirFiche()
             If CStr(v(i, cEtu)) = nom And UCase$(CStr(v(i, cStat))) = "A" And n < MAXL Then
                 n = n + 1
                 CopierLigne v, i, c1, cHeure, data, n
-                cles(n) = Nombre(v(i, cDate)) + Nombre(v(i, cHeure))
+                cles(n) = Nombre(v(i, cDat)) + Nombre(v(i, cHeure))
             End If
         Next i
         Trier data, cles, n, 4, True
@@ -99,7 +99,7 @@ Public Sub RemplirFiche()
             If CStr(v(i, cEtu)) = nom And n < MAXL Then
                 n = n + 1
                 CopierLigne v, i, c1, cStat, data, n
-                cles(n) = Nombre(v(i, cDate)) + Nombre(v(i, cHeure))
+                cles(n) = Nombre(v(i, cDat)) + Nombre(v(i, cHeure))
             End If
         Next i
         Trier data, cles, n, 5, True
@@ -146,14 +146,14 @@ End Sub
 Public Sub RemplirSuivi()
     Dim lo As ListObject, v As Variant, i As Long, n As Long, ens As String
     Dim data() As Variant, cles() As Double, c1 As Long, c2 As Long, cP As Long, cE As Long, cR As Long
-    Dim cDate As Long, cDeb As Long, p As String
+    Dim cDat As Long, cDeb As Long, p As String
     Application.Calculate
     Application.ScreenUpdating = False
     Deverrouiller shSuivi
     Set lo = Tbl("tblSeances")
     v = Donnees(lo)
     cP = Col(lo, "Présence prof"): cE = Col(lo, "Enseignant prévu"): cR = Col(lo, "Remplaçant ou motif")
-    cDate = Col(lo, "Date"): cDeb = Col(lo, "Début")
+    cDat = Col(lo, "Date"): cDeb = Col(lo, "Début")
 
     ' Absences, retards, remplacements (B26)
     c1 = Col(lo, "Date"): c2 = cR
@@ -164,7 +164,7 @@ Public Sub RemplirSuivi()
         If p <> "" And p <> "Présent" And n < MAXL Then
             n = n + 1
             CopierLigne v, i, c1, c2, data, n
-            cles(n) = Nombre(v(i, cDate)) + Nombre(v(i, cDeb))
+            cles(n) = Nombre(v(i, cDat)) + Nombre(v(i, cDeb))
         End If
     Next i
     Trier data, cles, n, c2 - c1 + 1, True
@@ -181,7 +181,7 @@ Public Sub RemplirSuivi()
                And n < MAXL Then
                 n = n + 1
                 CopierLigne v, i, c1, c2, data, n
-                cles(n) = Nombre(v(i, cDate)) + Nombre(v(i, cDeb))
+                cles(n) = Nombre(v(i, cDat)) + Nombre(v(i, cDeb))
             End If
         Next i
         Trier data, cles, n, c2 - c1 + 1, True
